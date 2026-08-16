@@ -2,10 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { getCurrentCustomer, UnauthenticatedError } from '@/lib/auth';
 import { deliveries } from '@/lib/db';
-import { getSkipEligibility, getSkipWindowStart } from '@/lib/skip-rules';
-import { toDeliveryWithEligibilityDTO, type DeliveryWithEligibilityDTO } from '@/lib/serializers';
+import { getSkipEligibility, getSkipWindowStart, MAX_SKIPS_IN_WINDOW } from '@/lib/skip-rules';
+import { toDeliveryWithEligibilityDTO, type DeliveriesResponseDTO } from '@/lib/serializers';
 
-type Response = | DeliveryWithEligibilityDTO[] | { error: string };
+type Response = DeliveriesResponseDTO | { error: string };
 
 export default async function handler( req: NextApiRequest, res: NextApiResponse<Response> ) {
   if (req.method !== 'GET') {
@@ -51,7 +51,14 @@ export default async function handler( req: NextApiRequest, res: NextApiResponse
       );
     });
 
-    return res.status(200).json(response);
+    return res.status(200).json({
+      deliveries: response,
+      skipAllowance: {
+        used: recentSkipCount,
+        remaining: Math.max(MAX_SKIPS_IN_WINDOW - recentSkipCount, 0),
+        limit: MAX_SKIPS_IN_WINDOW,
+      },
+    });
   } catch (err) {
     if (err instanceof UnauthenticatedError) {
       return res.status(401).json({

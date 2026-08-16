@@ -24,6 +24,17 @@ export interface DeliveryWithEligibilityDTO extends DeliveryDTO {
   skipReason: SkipEligibility['reason'];
 }
 
+export interface SkipAllowanceDTO {
+  used: number;
+  remaining: number;
+  limit: number;
+}
+
+export interface DeliveriesResponseDTO {
+  deliveries: DeliveryWithEligibilityDTO[];
+  skipAllowance: SkipAllowanceDTO;
+}
+
 export function toCustomerDTO(doc: CustomerDoc): CustomerDTO {
   return { id: doc._id, name: doc.name, plan: doc.plan, city: doc.city };
 }
