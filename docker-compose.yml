@@ -1,0 +1,7 @@
+# Mongo local so para o exercicio. Dados ficticios, nada real.
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    command: ['--quiet']
