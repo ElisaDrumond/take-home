@@ -127,7 +127,7 @@ O `updateOne` exige que a entrega ainda esteja em `SCHEDULED` no momento da escr
 
 Se outra requisição modificar a mesma entrega entre a leitura e o update, o estado é consultado novamente. Se ela já estiver `SKIPPED`, a operação é tratada como idempotente.
 
-Essa proteção resolve concorrência sobre **a mesma entrega**, mas não garante atomicidade completa da **cota global** quando duas entregas diferentes são puladas ao mesmo tempo. Uma estratégia transacional ou outra modelagem atômica da cota ficou fora do escopo de 4 horas e é uma evolução arquitetural intencional para estudo posterior.
+Essa proteção resolve concorrência sobre **a mesma entrega**. O comportamento da cota sob operações concorrentes em **entregas diferentes** não foi aprofundado dentro do limite do exercício.
 
 ## Frontend
 
@@ -142,7 +142,7 @@ A interface exibe:
 
 Após um skip, a lista é consultada novamente porque a operação pode alterar o status da entrega, a cota restante e a elegibilidade das demais entregas.
 
-O cliente HTTP simples fornecido pelo exercício foi mantido. Para um produto maior, server-state, cancelamento de requests e cache seriam candidatos naturais a uma solução como SWR ou TanStack Query.
+O cliente HTTP simples fornecido pelo exercício foi mantido.
 
 ## Testes
 
@@ -186,20 +186,29 @@ Para manter o escopo controlado:
 - não adicionei testes automatizados com banco real;
 - concentrei abstração apenas onde havia regra de negócio relevante.
 
-## Evoluções que eu faria em um produto real
+## Revisão pós-processo seletivo
+
+Depois da entrega e do processo seletivo, revisitei a solução com mais tempo e identifiquei alguns pontos que valem uma evolução posterior.
+
+Eles **não fazem parte da implementação original** e foram mantidos fora deste momento para preservar o take-home como registro da solução construída dentro do limite de 4 horas.
+
+Pontos identificados para uma próxima iteração:
 
 - tornar a cota de pulos robusta contra concorrência entre entregas diferentes;
-- modelar estados do domínio de forma a reduzir combinações inválidas no TypeScript;
+- explorar uma modelagem de domínio em TypeScript que reduza combinações de estado inválidas;
 - adicionar testes de integração com MongoDB isolado;
-- introduzir cancelamento de requests e uma estratégia explícita para server state no frontend;
+- tratar cancelamento e concorrência de requests no frontend, especialmente durante trocas rápidas de cliente;
+- avaliar uma estratégia explícita para server state caso a interface evolua;
 - adicionar logs estruturados e observabilidade;
-- informar quando o próximo pulo ficará disponível.
+- informar ao cliente quando o próximo pulo ficará disponível.
 
 A última informação pode ser derivada do pulo ativo mais antigo na janela:
 
 ```text
 nextAvailableAt = oldestActiveSkip.skippedAt + 8 semanas
 ```
+
+A intenção é tratar esses itens futuramente como uma segunda iteração do projeto, com decisões e alterações documentadas separadamente, em vez de reescrever retroativamente a solução do exercício.
 
 ## Setup
 
