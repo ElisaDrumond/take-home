@@ -1,134 +1,241 @@
-# Take-home — Pular entrega da semana
+# Delivery Skip — Take-home
 
-Esqueleto pronto: Next.js, Mongo, seed, auth falsa e Jest já configurados.
-Você não deve gastar tempo com setup.
+Aplicação desenvolvida em Next.js, TypeScript e MongoDB para listar as próximas entregas de um cliente e permitir o pulo de uma entrega respeitando regras de prazo, cota e status.
 
-**Tempo: 4h.** O teto é real e a avaliação considera esse limite. Se estourar, pare e
-escreva no README o que ficou faltando — isso não desconta nota.
+> Este repositório nasceu de um take-home com limite de 4 horas. O enunciado original foi preservado em [`CHALLENGE.md`](./CHALLENGE.md). Este README documenta a solução, as decisões e os trade-offs.
 
----
+## O problema
 
-## Setup
+A aplicação precisa permitir que um cliente pule uma entrega sem quebrar três regras principais:
 
-Requisitos: Node 18.18+ e Docker.
+- o pedido só pode ser pulado até 2 dias antes da entrega, às 20h no horário de Brasília;
+- cada cliente pode usar no máximo 2 pulos em uma janela móvel de 8 semanas;
+- pedidos em produção ou em estados posteriores não podem ser pulados.
 
-```bash
-cp .env.example .env.local
-docker compose up -d     # sobe o Mongo local
-yarn install
-yarn seed                # popula dados fictícios
-yarn dev                 # http://localhost:3000
-```
-
-Sanidade: http://localhost:3000/api/me deve devolver a Ana.
-
-Outros comandos: `yarn test`, `yarn typecheck`, `yarn build`.
+A repetição da mesma operação sobre uma entrega já pulada deve ser idempotente.
 
 ## Stack
 
-Next.js (Pages Router) · TypeScript · MongoDB · Jest · yarn.
-API em `src/pages/api`. Sem GraphQL neste exercício.
+- Next.js 14 — Pages Router
+- TypeScript
+- MongoDB
+- Jest
+- date-fns / date-fns-tz
+- Docker para o MongoDB local
 
-## Autenticação (falsa)
+## Arquitetura
 
-O cliente autenticado vem do header `x-customer-id`. **Isso não é auth** — é um atalho
-para você não perder tempo com login. Trate o retorno de `getCurrentCustomer` como se
-viesse de um token já validado: é a única fonte confiável de quem está chamando.
+Antes da implementação, tratei o enunciado como um contrato de produto e separei o fluxo em camadas com responsabilidades diferentes:
 
-Na tela tem um seletor de cliente. Em chamada direta, mande o header.
-
-## Dados do seed
-
-Todos fictícios. As datas são relativas ao momento em que você roda o seed.
-
-| Cliente | Plano | Cidade | Situação |
-|---|---|---|---|
-| `cus_ana` | STANDARD | São Paulo | 1 pulo na janela atual |
-| `cus_bruno` | CLOSED_PLAN | Campinas | 2 pulos na janela atual |
-| `cus_carla` | STANDARD | São Paulo | 1 pulo, fora da janela (70 dias atrás) |
-
-Entregas da Ana, uma para cada caso:
-
-| Quando | Status | Cenário |
-|---|---|---|
-| −7d | DELIVERED | histórico |
-| +1d | SCHEDULED | prazo de corte já passou |
-| +2d | SCHEDULED | **limítrofe de propósito**: o corte é hoje às 20h |
-| +3d | IN_PRODUCTION | dentro do prazo, mas já em produção |
-| +10d | SCHEDULED | pode pular |
-| +17d | SKIPPED | já pulada |
-| +24d | SCHEDULED | pode pular |
-
-`yarn seed` pode rodar quantas vezes quiser: limpa e recria tudo.
-
----
-
-## O que implementar
-
-### 1. Listar as próximas entregas
-
-As próximas 4 entregas do cliente autenticado.
-
-### 2. Pular uma entrega
-
-**Regras de negócio:**
-
-- Só é possível pular até o **prazo de corte: 2 dias antes da entrega, às 20h**
-  (horário de Brasília).
-- Máximo de **2 pulos por janela de 8 semanas**.
-- Não é possível pular entrega que já está em produção (`IN_PRODUCTION` ou posterior).
-- Pular uma entrega já pulada não deve gerar erro nem consumir cota extra.
-
-O desenho das rotas (caminho, verbo, formato de resposta e de erro) é decisão sua.
-
-### 3. Tela
-
-Lista das próximas entregas com botão de pular. Quando não for possível pular, o botão
-fica desabilitado **e mostra o motivo** ao cliente: prazo encerrado, cota esgotada, ou
-pedido já em produção.
-
-Visual não conta nota. Comportamento conta.
-
-### 4. Testes
-
-Cobrindo as regras de negócio. Você escolhe o nível de teste e justifica a escolha.
-Ambiente padrão do Jest é `node`; para testar componente, use o docblock
-`@jest-environment jsdom` no topo do arquivo (RTL e jest-dom já instalados).
-
-### 5. README de decisões
-
-Substitua ou complemente este arquivo com: decisões que tomou, trade-offs, o que ficou
-fora do escopo, e as premissas que você assumiu. Curto, em bullets.
-
----
-
-## Sobre IA
-
-Uso de Claude Code ou equivalente é **esperado**, não tolerado. No README, registre onde
-o agente ajudou e onde você descartou o que ele sugeriu.
-
-## Liberdades
-
-- Remodele os tipos em `src/lib/domain.ts` se fizer sentido — só registre o porquê.
-- Troque o cliente HTTP do front (SWR, react-query) se preferir.
-- Adicione bibliotecas se precisar. `date-fns` e `date-fns-tz` já estão instaladas.
-- Não precisa mexer em Docker, CI ou deploy.
-
-## Onde as coisas estão
-
-```
-src/pages/index.tsx        tela principal
-src/pages/api/me.ts        rota pronta, use como referência de padrão
-src/lib/domain.ts          tipos do domínio
-src/lib/db.ts              conexão e coleções
-src/lib/auth.ts            auth falsa
-src/lib/serializers.ts     documento -> resposta da API
-src/lib/api-client.ts      fetch do front
-scripts/seed.ts            dados fictícios
-__tests__/example.test.ts  teste de fumaça, pode apagar
+```text
+UI
+↓
+API / HTTP
+↓
+Operação de skip
+↓
+Regras de negócio
 ```
 
-## Sessão seguinte
+As regras temporais e de elegibilidade ficam isoladas da camada HTTP. A API revalida as regras no momento da ação e o frontend apenas apresenta o resultado devolvido pelo backend.
 
-Depois da entrega, marcamos 60 min para você apresentar o código e mexermos nele juntas.
-Não precisa preparar nada além do que já entregou.
+Principais arquivos:
+
+```text
+src/lib/skip-rules.ts       regras puras de elegibilidade e tempo
+src/lib/skip-delivery.ts    coordenação da operação e persistência
+src/pages/api/deliveries    contrato HTTP
+src/lib/serializers.ts      documentos do banco -> DTOs da API
+__tests__/                  testes das regras e da operação
+```
+
+## Rotas
+
+### `GET /api/deliveries`
+
+Retorna as próximas quatro entregas do cliente autenticado, já acompanhadas da elegibilidade calculada no backend:
+
+```ts
+canSkip
+skipReason
+```
+
+A resposta inclui também o resumo da cota:
+
+```ts
+skipAllowance: {
+  used,
+  remaining,
+  limit
+}
+```
+
+### `POST /api/deliveries/:id/skip`
+
+Tenta pular uma entrega pertencente ao cliente autenticado.
+
+A operação revalida todas as regras, mesmo que a tela tenha mostrado anteriormente que o pedido era elegível. Isso evita confiar em estado que pode ter ficado desatualizado entre o carregamento da página e o clique.
+
+## Decisões de domínio
+
+### Horário de corte
+
+O prazo foi interpretado como “até 2 dias antes da entrega, às 20h em Brasília”. O instante das 20:00:00 foi tratado como inclusivo:
+
+```text
+19:59:59 → permitido
+20:00:00 → permitido
+20:00:01 → bloqueado
+```
+
+As datas persistidas continuam em UTC. A conversão para `America/Sao_Paulo` ocorre apenas onde a regra de calendário exige essa interpretação.
+
+O relógio (`now`) é recebido como dependência nas funções de negócio. Isso deixa os cenários temporais determinísticos e testáveis sem depender do horário real da máquina.
+
+### Janela de 8 semanas
+
+A cota utiliza uma janela móvel baseada no instante registrado em `skippedAt`.
+
+Um pulo conta enquanto estiver dentro das últimas 8 semanas. Ao completar exatamente 8 semanas, deixa de consumir a cota.
+
+### Status
+
+Uma nova operação de skip ocorre somente sobre `SCHEDULED`.
+
+Estados posteriores ou incompatíveis recebem razões específicas, como:
+
+- `IN_PRODUCTION`
+- `OUT_FOR_DELIVERY`
+- `DELIVERED`
+- `CANCELLED`
+
+### Idempotência
+
+Há uma distinção intencional entre interface e backend.
+
+Na UI, uma entrega `SKIPPED` apresenta o botão desabilitado. No backend, uma nova chamada para a mesma entrega continua sendo aceita de forma idempotente:
+
+- retorna o estado atual;
+- preserva `skippedAt`;
+- não consome outra unidade da cota.
+
+Isso cobre retries, múltiplas abas e chamadas diretas à API.
+
+### Concorrência
+
+O `updateOne` exige que a entrega ainda esteja em `SCHEDULED` no momento da escrita.
+
+Se outra requisição modificar a mesma entrega entre a leitura e o update, o estado é consultado novamente. Se ela já estiver `SKIPPED`, a operação é tratada como idempotente.
+
+Essa proteção resolve concorrência sobre **a mesma entrega**. O comportamento da cota sob operações concorrentes em **entregas diferentes** não foi aprofundado dentro do limite do exercício.
+
+## Frontend
+
+A interface exibe:
+
+- próximas quatro entregas;
+- data e valor;
+- status;
+- disponibilidade da ação;
+- motivo do bloqueio;
+- quantidade de pulos restantes.
+
+Após um skip, a lista é consultada novamente porque a operação pode alterar o status da entrega, a cota restante e a elegibilidade das demais entregas.
+
+O cliente HTTP simples fornecido pelo exercício foi mantido.
+
+## Testes
+
+Foram priorizadas as regras com maior risco de erro.
+
+### Regras de negócio
+
+`skip-rules.test.ts` cobre, entre outros:
+
+- cálculo do cutoff em Brasília;
+- antes, exatamente no instante e depois das 20h;
+- limite de dois pulos;
+- fronteira exata das 8 semanas;
+- estados de produção e estados finais;
+- entrega já pulada.
+
+### Operação de skip
+
+`skip-delivery.test.ts` cobre:
+
+- skip de entrega elegível;
+- idempotência;
+- cota esgotada;
+- entrega em produção;
+- isolamento entre clientes;
+- atualização concorrente da mesma entrega.
+
+A operação foi extraída da rota HTTP para permitir testes isolados com a collection do MongoDB mockada.
+
+Não foi criada uma suíte automatizada de integração API + MongoDB dentro do limite do exercício.
+
+## Trade-offs do limite de 4 horas
+
+Para manter o escopo controlado:
+
+- não adicionei React Query ou SWR;
+- não criei camadas genéricas de repository/controller/service;
+- não implementei autenticação real;
+- não alterei a modelagem do MongoDB;
+- mantive a tela simples e sem componentização excessiva;
+- não adicionei testes automatizados com banco real;
+- concentrei abstração apenas onde havia regra de negócio relevante.
+
+## Revisão pós-processo seletivo
+
+Depois da entrega e do processo seletivo, revisitei a solução com mais tempo e identifiquei alguns pontos que valem uma evolução posterior.
+
+Eles **não fazem parte da implementação original** e foram mantidos fora deste momento para preservar o take-home como registro da solução construída dentro do limite de 4 horas.
+
+Pontos identificados para uma próxima iteração:
+
+- tornar a cota de pulos robusta contra concorrência entre entregas diferentes;
+- explorar uma modelagem de domínio em TypeScript que reduza combinações de estado inválidas;
+- adicionar testes de integração com MongoDB isolado;
+- tratar cancelamento e concorrência de requests no frontend, especialmente durante trocas rápidas de cliente;
+- avaliar uma estratégia explícita para server state caso a interface evolua;
+- adicionar logs estruturados e observabilidade;
+- informar ao cliente quando o próximo pulo ficará disponível.
+
+A última informação pode ser derivada do pulo ativo mais antigo na janela:
+
+```text
+nextAvailableAt = oldestActiveSkip.skippedAt + 8 semanas
+```
+
+A intenção é tratar esses itens futuramente como uma segunda iteração do projeto, com decisões e alterações documentadas separadamente, em vez de reescrever retroativamente a solução do exercício.
+
+## Setup
+
+Requisitos:
+
+- Node 18.18+
+- Docker
+- Yarn
+
+```bash
+cp .env.example .env.local
+docker compose up -d
+yarn install
+yarn seed
+yarn dev
+```
+
+Aplicação: `http://localhost:3000`
+
+```bash
+yarn test
+yarn typecheck
+yarn build
+```
+
+## Uso de IA
+
+IA foi utilizada como apoio na leitura do enunciado, identificação de casos limítrofes, discussão das regras temporais, desenho inicial das APIs e revisão da estratégia de testes.
+
+As decisões foram revisadas antes da implementação. Sugestões que aumentavam complexidade sem benefício suficiente para o limite do exercício foram descartadas. Uma interpretação inicial de que exatamente às 20h o prazo já estaria encerrado também foi rejeitada após revisar a experiência esperada para o cliente.
